@@ -38,7 +38,7 @@
 		 */
 		public static function getModuleInfo() {
 			$infoArray = array(
-				'title' => __('Big Commerce Orders Importer'), 
+				'title' => __('Big Commerce Orders Importer'),
 				'version' => 115,
 				'summary' => __("Imports Big Commerce Orders into Dplus"),
 				'autoload' => true,
@@ -61,7 +61,7 @@
 				'storehash'      => '',
 			);
 		}
-		
+
 		/**
 		 * Constructor
 		 * Instatiates Config Values
@@ -78,7 +78,9 @@
 		 */
 		public function init() {
 			parent::init();
-			$this->get_api();
+			if (!empty($this->client_id)) {
+				$this->get_api();
+			}
 		}
 
 		/**
@@ -88,43 +90,43 @@
 		 */
 		static public function getModuleConfigInputfields(array $data) {
 			$modules = wire('modules');
-			
+
 			$fields = new InputfieldWrapper();
 			$defaults = self::getDefaultConfig();
 			$data = array_merge($defaults, $data);
 
-			$f = $modules->get('InputfieldText'); 
+			$f = $modules->get('InputfieldText');
 			$f->attr('name', 'client_id');
 			$f->attr('pattern', '[A-Za-z0-9%#_-]*');
 			$f->set('required', 'true');
 			$f->icon = 'fa-database';
-			$f->label = __('Big Commerce Client ID'); 
-			$f->description = __('This is the API client ID provided by BigCommerce'); 
+			$f->label = __('Big Commerce Client ID');
+			$f->description = __('This is the API client ID provided by BigCommerce');
 			$f->value = $data['client_id'];
 			$fields->add($f);
 
-			$f = $modules->get('InputfieldText'); 
+			$f = $modules->get('InputfieldText');
 			$f->attr('name', 'client_token');
 			$f->icon = 'fa-database';
-			$f->label = __('Big Commerce Client Token'); 
-			$f->description = __('This is the API client token provided by BigCommerce'); 
+			$f->label = __('Big Commerce Client Token');
+			$f->description = __('This is the API client token provided by BigCommerce');
 			$f->value = $data['client_token'];
 			$fields->add($f);
-			
-			$f = $modules->get('InputfieldText'); 
+
+			$f = $modules->get('InputfieldText');
 			$f->attr('name', 'client_secret');
 			$f->icon = 'fa-database';
-			$f->label = __('Big Commerce Client Secret'); 
-			$f->description = __('This is the API client secret value provided by BigCommerce'); 
+			$f->label = __('Big Commerce Client Secret');
+			$f->description = __('This is the API client secret value provided by BigCommerce');
 			$f->value = $data['client_secret'];
 			$fields->add($f);
 
-			$f = $modules->get('InputfieldText'); 
+			$f = $modules->get('InputfieldText');
 			$f->attr('name', 'storehash');
 			$f->icon = 'fa-database';
-			$f->label = __('Big Commerce Store Hash'); 
-			$f->description = __('This is the Store Hash that Idenifies the store in BigCommerce'); 
-			$f->notes = __(''); 
+			$f->label = __('Big Commerce Store Hash');
+			$f->description = __('This is the Store Hash that Idenifies the store in BigCommerce');
+			$f->notes = __('');
 			$f->value = $data['storehash'];
 			$fields->add($f);
 
@@ -143,7 +145,7 @@
 			$this->api = new OrdersAPI($this->client_id, $this->client_token, $this->client_secret, $this->storehash);
 			return $this->api;
 		}
-		
+
 		/**
 		 * Imports Orders From Big Commerce Into Database
 		 * @param  WireInput $input Used to create filters from the $_GET Array
@@ -155,7 +157,7 @@
 			if ($orderimportconfig->remove_existing_orders) {
 				$orderimportconfig->delete_existingorders();
 			}
-			
+
 			$options = $this->get_options($input);
 			return $this->api->import_orders($limit, $options);
 		}

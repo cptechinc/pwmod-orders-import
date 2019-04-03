@@ -33,7 +33,7 @@
 		 */
 		public static function getModuleInfo() {
 			$infoArray = array(
-				'title' => __('Orders Importer Config'), 
+				'title' => __('Orders Importer Config'),
 				'version' => 115,
 				'summary' => __("Configuration for Which Orders Import Service to use"),
 				'autoload' => true,
@@ -62,33 +62,33 @@
 		 */
 		static public function getModuleConfigInputfields(array $data) {
 			$modules = wire('modules');
-		
+
 			$fields = new InputfieldWrapper();
 			$defaults = self::getDefaultConfig();
 			$data = array_merge($defaults, $data);
 
-			$f = $modules->get('InputfieldSelect'); 
+			$f = $modules->get('InputfieldSelect');
 			$f->attr('name', 'module');
 			$f->attr('pattern', '[A-Za-z0-9%#_-]*');
 			$f->set('required', 'true');
 			$f->icon = 'fa-database';
-			$f->label = __('Order Import Module'); 
-			$f->description = __('This is the Module to Import Orders'); 
+			$f->label = __('Order Import Module');
+			$f->description = __('This is the Module to Import Orders');
 			$f->value = $data['module'];
 
 			foreach (self::$children as $module => $label) {
-				$f->addOption($module, $label); 
+				$f->addOption($module, $label);
 			}
 			$fields->add($f);
 
-			$f = $modules->get('InputfieldCheckbox'); 
+			$f = $modules->get('InputfieldCheckbox');
 			$f->attr('name', 'remove_existing_orders');
 			$f->icon = 'fa-database';
-			$f->label = __('Remove Existing Orders On Import'); 
-			$f->notes = __('Check to Remove Orders before Each Import'); 
+			$f->label = __('Remove Existing Orders On Import');
+			$f->notes = __('Check to Remove Orders before Each Import');
 			$f->attr('checked', $data['remove_existing_orders'] ? 'checked' : '' );
 			$fields->add($f);
-			
+
 
 			return $fields;
 		}
@@ -139,7 +139,7 @@
 			parent::init();
 		}
 
-		
+
 /* =============================================================
 	Module Functions
 ============================================================= */
@@ -171,10 +171,9 @@
 			$t->filename = $this->wire('config')->paths->templates . "$this->template_import.php";
 			$t->fieldgroup = $fg; // add the fieldgroup
 			$t->save();
-			
 
-			$templatefile = __DIR__."$this->template_import.php";
-			copy($templatefile, $this->wire('config')->paths->templates);
+			$templatefile = __DIR__."/$this->template_import.php";
+			copy($templatefile, $this->wire('config')->paths->templates."$this->template_import.php");
 		}
 
 		/**
@@ -254,6 +253,3 @@
 			}
 		}
 	}
-
-
-	
