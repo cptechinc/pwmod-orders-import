@@ -1,0 +1,259 @@
+<?php
+	use Dplus\Base\QueryBuilder;
+
+	class OrderImporters extends Process implements ConfigurableModule {
+		/**
+		 * Big Commerce Orders Object
+		 * @var OrdersAPI
+		 */
+		protected $api;
+
+		/**
+		 * Template for Importing Orders
+		 *
+		 * @var string
+		 */
+		private $template_import = 'import-orders';
+
+		/**
+		 * Module Names that can Import Orders
+		 * @var array
+		 */
+		public static $children = array(
+			'BigCommerceOrderImporter' => 'BigCommerce'
+		);
+
+/* =============================================================
+	ProcessWire Module Functions
+============================================================= */
+		/**
+		 * ProcessWire Module Info
+		 *
+		 * @return void
+		 */
+		public static function getModuleInfo() {
+			$infoArray = array(
+				'title' => __('Orders Importer Config'), 
+				'version' => 115,
+				'summary' => __("Configuration for Which Orders Import Service to use"),
+				'autoload' => true,
+				'singular' => true,
+				'author' => 'pauldro',
+				'icon' => 'database'
+			);
+			return $infoArray;
+		}
+
+		/**
+		 * Provides Default Options for Config
+		 * @return array
+		 */
+		static public function getDefaultConfig() {
+			return array(
+				'module'                 => '',
+				'remove_existing_orders' => false
+			);
+		}
+
+		/**
+		 * Returns Input fields for Module Configs
+		 * @param  array              $data  Saved Module Config Data
+		 * @return InputfieldWrapper         Fields to Get Values / Change values for
+		 */
+		static public function getModuleConfigInputfields(array $data) {
+			$modules = wire('modules');
+		
+			$fields = new InputfieldWrapper();
+			$defaults = self::getDefaultConfig();
+			$data = array_merge($defaults, $data);
+
+			$f = $modules->get('InputfieldSelect'); 
+			$f->attr('name', 'module');
+			$f->attr('pattern', '[A-Za-z0-9%#_-]*');
+			$f->set('required', 'true');
+			$f->icon = 'fa-database';
+			$f->label = __('Order Import Module'); 
+			$f->description = __('This is the Module to Import Orders'); 
+			$f->value = $data['module'];
+
+			foreach (self::$children as $module => $label) {
+				$f->addOption($module, $label); 
+			}
+			$fields->add($f);
+
+			$f = $modules->get('InputfieldCheckbox'); 
+			$f->attr('name', 'remove_existing_orders');
+			$f->icon = 'fa-database';
+			$f->label = __('Remove Existing Orders On Import'); 
+			$f->notes = __('Check to Remove Orders before Each Import'); 
+			$f->attr('checked', $data['remove_existing_orders'] ? 'checked' : '' );
+			$fields->add($f);
+			
+
+			return $fields;
+		}
+
+
+		/**
+		 * ProcessWire Installer Function
+		 * NOTE: Runs when installed through ProcessWire
+		 * @return void
+		 */
+		public function ___install() {
+			$this->create_template_import();
+			$this->create_page_import();
+		}
+
+		/**
+		 * ProcessWire removal Function
+		 * NOTE: Runs when removed through ProcessWire
+		 * @return void
+		 */
+		public function ___uninstall() {
+			if ($this->templates->get("$this->template_import")) {
+				$this->delete_page_import();
+
+				if ($this->templates->get("$this->template_import")->getNumPages() > 0) {
+					throw new WireException("Can't uninstall because template been used by some pages.");
+				} else {
+					$this->wire('templates')->delete($this->templates->get("$this->template_import"));
+				}
+			}
+		}
+
+		/**
+		 * Constructor
+		 * Instatiates Config Values
+		 */
+		public function __construct() {
+			foreach(self::getDefaultConfig() as $key => $value) {
+				$this->$key = $value;
+			}
+		}
+
+		/**
+		 * ProcessWire Initialization Function
+		 * @return void
+		 */
+		public function init() {
+			parent::init();
+		}
+
+		
+/* =============================================================
+	Module Functions
+============================================================= */
+		/**
+		 * Returns Module that will be used for Importing Orders
+		 * @return Process
+		 */
+		public function get_importer() {
+			return $this->wire('modules')->get($this->module);
+		}
+
+		/**
+		 * Creates the Import Orders Template
+		 * NOTE: Called by $this->___install()
+		 * @return string
+		 */
+		public function create_template_import() {
+				// new fieldgroup
+			$fg = new Fieldgroup();
+			$fg->name = $this->template_import;
+			$fg->add($this->fields->get('title')); // needed title field
+			$fg->save();
+
+				// new template using the fieldgroup
+			$t = new Template();
+			$t->noUnpublish = 1;   // Deny Ability to Unpublish
+			$t->noParents   = -1;  // Allow only one Page with Template
+			$t->name = $this->template_import;
+			$t->filename = $this->wire('config')->paths->templates . "$this->template_import.php";
+			$t->fieldgroup = $fg; // add the fieldgroup
+			$t->save();
+			
+
+			$templatefile = __DIR__."$this->template_import.php";
+			copy($templatefile, $this->wire('config')->paths->templates);
+		}
+
+		/**
+		 * Creates the Import Orders Page Under Root
+		 * NOTE: Called by $this->___install()
+		 * @return string
+		 */
+		public function create_page_import() {
+			$pages = $this->wire('pages');
+
+			$p = new Page();
+			$p->template = $this->template_import;
+			$p->title = "Import";
+			$p->name = 'import';
+			$p->parent = $pages->get('/');
+			$p->save();
+		}
+
+		/**
+		 * Removes the Import Orders Page
+		 * @return void
+		 */
+		private function delete_page_import() {
+			$pages = $this->wire('pages');
+
+			$importpage = $pages->get("template=$this->template_import");
+			$importpage->delete();
+		}
+
+		/**
+		 * Deletes Existing Orders from ordrhed and ordrdet
+		 * @param  bool $debug Run in debug? If so, @return string SQL Query
+		 * @return void
+		 */
+		public function delete_existingorders($debug = false) {
+			if ($debug) {
+				return $this->delete_orders($debug) . " | " . $this->delete_orderdetails($debug);
+			} else {
+				$this->delete_orders();
+				$this->delete_orderdetails();
+			}
+		}
+
+		/**
+		 * Removes Orders in the ordrhed table
+		 * @param  bool   $debug     Run in debug? If so, @return string SQL Query
+		 * @return int               Number of rows deleted
+		 */
+		private function delete_orders($debug = false) {
+			$q = (new QueryBuilder())->table('ordrhed');
+			$q->mode('delete');
+			$sql = $this->wire('dplusdata')->prepare($q->render());
+
+			if ($debug) {
+				return $q->generate_sqlquery($q->params);
+			} else {
+				$sql->execute($q->params);
+				return $sql->rowCount();
+			}
+		}
+
+		/**
+		 * Removes Order Details in the ordrdet table
+		 * @param  bool   $debug     Run in debug? If so, @return string SQL Query
+		 * @return int               Number of rows deleted
+		 */
+		private function delete_orderdetails($debug = false) {
+			$q = (new QueryBuilder())->table('ordrdet');
+			$q->mode('delete');
+			$sql = $this->wire('dplusdata')->prepare($q->render());
+
+			if ($debug) {
+				return $q->generate_sqlquery($q->params);
+			} else {
+				$sql->execute($q->params);
+				return $sql->rowCount();
+			}
+		}
+	}
+
+
+	

@@ -1,0 +1,204 @@
+<?php
+	use Dplus\Import\Orders\BigCommerce\OrdersAPI;
+	use ProcessWire\WireInput;
+
+	class BigCommerceOrderImporter extends Process implements ConfigurableModule {
+		/**
+		 * Big Commerce Orders Object
+		 * @var OrdersAPI
+		 */
+		protected $api;
+
+		/**
+		 * Default Query Parameters
+		 * https://developer.bigcommerce.com/api-reference/orders/orders-api/orders/getorders
+		 * @var array
+		 */
+		public static $default_options = array(
+			'sort'             => 'date_created:desc',
+			'min_date_created' => 'yesterday',
+			'status_id'        => 11 // Awaiting Fulfillment
+		);
+
+		/**
+		 * Filters that can be applied to Request
+		 * @var array
+		 */
+		public static $filters = array(
+			'min_date_created' => array('type' => 'date', 'format' => 'Y-m-d')
+		);
+
+/* =============================================================
+	ProcessWire Module Functions
+============================================================= */
+		/**
+		 * ProcessWire Module Info
+		 *
+		 * @return void
+		 */
+		public static function getModuleInfo() {
+			$infoArray = array(
+				'title' => __('Big Commerce Orders Importer'), 
+				'version' => 115,
+				'summary' => __("Imports Big Commerce Orders into Dplus"),
+				'autoload' => true,
+				'singular' => true,
+				'author' => 'pauldro',
+				'icon' => 'database'
+			);
+			return $infoArray;
+		}
+
+		/**
+		 * Provides Default Options for Config
+		 * @return array
+		 */
+		static public function getDefaultConfig() {
+			return array(
+				'client_token'  => '',
+				'client_id'     => '',
+				'client_secret' => '',
+				'storehash'      => '',
+			);
+		}
+		
+		/**
+		 * Constructor
+		 * Instatiates Config Values
+		 */
+		public function __construct() {
+			foreach(self::getDefaultConfig() as $key => $value) {
+				$this->$key = $value;
+			}
+		}
+
+		/**
+		 * ProcessWire Init
+		 * @return void
+		 */
+		public function init() {
+			parent::init();
+			$this->get_api();
+		}
+
+		/**
+		 * Returns Input fields for Module Configs
+		 * @param  array              $data  Saved Module Config Data
+		 * @return InputfieldWrapper         Fields to Get Values / Change values for
+		 */
+		static public function getModuleConfigInputfields(array $data) {
+			$modules = wire('modules');
+			
+			$fields = new InputfieldWrapper();
+			$defaults = self::getDefaultConfig();
+			$data = array_merge($defaults, $data);
+
+			$f = $modules->get('InputfieldText'); 
+			$f->attr('name', 'client_id');
+			$f->attr('pattern', '[A-Za-z0-9%#_-]*');
+			$f->set('required', 'true');
+			$f->icon = 'fa-database';
+			$f->label = __('Big Commerce Client ID'); 
+			$f->description = __('This is the API client ID provided by BigCommerce'); 
+			$f->value = $data['client_id'];
+			$fields->add($f);
+
+			$f = $modules->get('InputfieldText'); 
+			$f->attr('name', 'client_token');
+			$f->icon = 'fa-database';
+			$f->label = __('Big Commerce Client Token'); 
+			$f->description = __('This is the API client token provided by BigCommerce'); 
+			$f->value = $data['client_token'];
+			$fields->add($f);
+			
+			$f = $modules->get('InputfieldText'); 
+			$f->attr('name', 'client_secret');
+			$f->icon = 'fa-database';
+			$f->label = __('Big Commerce Client Secret'); 
+			$f->description = __('This is the API client secret value provided by BigCommerce'); 
+			$f->value = $data['client_secret'];
+			$fields->add($f);
+
+			$f = $modules->get('InputfieldText'); 
+			$f->attr('name', 'storehash');
+			$f->icon = 'fa-database';
+			$f->label = __('Big Commerce Store Hash'); 
+			$f->description = __('This is the Store Hash that Idenifies the store in BigCommerce'); 
+			$f->notes = __(''); 
+			$f->value = $data['storehash'];
+			$fields->add($f);
+
+			return $fields;
+		}
+
+
+/* =============================================================
+	Module Functions / API Functions
+============================================================= */
+		/**
+		 * Gets Instance of <Dplus\Import\Orders\BigCommerceOrdersAPI>
+		 * @return void
+		 */
+		public function get_api() {
+			$this->api = new OrdersAPI($this->client_id, $this->client_token, $this->client_secret, $this->storehash);
+			return $this->api;
+		}
+		
+		/**
+		 * Imports Orders From Big Commerce Into Database
+		 * @param  WireInput $input Used to create filters from the $_GET Array
+		 * @param  int       $limit Number of Orders to Return
+		 * @return array            <BigCommerce\Api\Resources\Order>
+		 */
+		public function import(WireInput $input, $limit = 0) {
+			$orderimportconfig = $this->wire('modules')->get('OrderImporters');
+			if ($orderimportconfig->remove_existing_orders) {
+				$orderimportconfig->delete_existingorders();
+			}
+			
+			$options = $this->get_options($input);
+			return $this->api->import_orders($limit, $options);
+		}
+
+		/**
+		 * Creates an array of options by parsing the $_GET array and
+		 * combining it with the default options
+		 * @param  WireInput $input Used to create filters from the $_GET Array
+		 * @return array            Options Array to provide as request parameters
+		 */
+		private function get_options(WireInput $input) {
+			$options = self::$default_options;
+			$filters = self::$filters;
+
+			foreach ($filters as $key => $filter) {
+				if ($input->get->$key) {
+					$options[$key] = $this->get_filtervalue($input->get->text($key), $filter);
+				}
+			}
+
+			if ($options['min_date_created']) {
+				if ($options['min_date_created'] == 'yesterday') {
+					$options['min_date_created'] = date(self::$filters['min_date_created']['format']);
+				}
+				$options['min_date_created'] = date(self::$filters['min_date_created']['format'], strtotime($options['min_date_created']));
+			}
+			return $options;
+		}
+
+		/**
+		 * Returns Filter Value based on Filter Properties
+		 * @param  mixed $originalvalue    Original Value
+		 * @param  array $filterproperties Properties to Format Value
+		 * @return mixed
+		 */
+		private function get_filtervalue($originalvalue, array $filterproperties) {
+			switch ($filterproperties['type']) {
+				case 'date':
+					return date($filterproperties['format'], strtotime($originalvalue));
+					break;
+				default:
+					return $originalvalue;
+					break;
+			}
+		}
+	}
